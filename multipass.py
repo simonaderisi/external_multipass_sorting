@@ -1,8 +1,9 @@
 import random
 import pygame
+import copy
 
 N_ITEMS_PER_PAGE = 2
-WAITING_TIME = 1000
+WAITING_TIME = 500
 
 WIDTH = 1200
 HEIGHT = 800
@@ -52,7 +53,7 @@ def display_run(run, pos, color, coord_x, coord_y):
         rect_y = coord_y + (RECT_HEIGHT + 3) * i
         if rect_y >= HEIGHT - RECT_HEIGHT:
             coord_x = coord_x + RECT_WIDTH + 10
-            coord_y = - (RECT_HEIGHT + 3) * i + 100
+            coord_y = - (RECT_HEIGHT + 3) * i + 150
             rect_x = coord_x
             rect_y = coord_y + (RECT_HEIGHT + 3) * i
         pygame.draw.rect(win, col, (rect_x, rect_y, RECT_WIDTH, RECT_HEIGHT))
@@ -68,8 +69,7 @@ def display_input(runs, positions):
     coord_x = 60
     coord_y = 150
     for k in range(len(runs)):
-        coord_x, rect_y = display_run(runs[k], positions[k], colors[k], coord_x, coord_y)
-        #if len(runs) <= CONTOUR_WIDTH - 60
+        coord_x, rect_y = display_run(runs[k], positions[k], colors[k%10], coord_x, coord_y)
         if rect_y + RECT_HEIGHT + 3 >= HEIGHT - RECT_HEIGHT:
             coord_y = 150
         else:
@@ -114,7 +114,7 @@ def display_buffer(contents, colors):
             pygame.draw.rect(win, BLACK, (rect_x, rect_y, RECT_WIDTH, RECT_HEIGHT))
 
 
-#transorms a list into a list of pages
+#transorms a list into pages
 def list_2_pages(list):
     return [list[j:j+N_ITEMS_PER_PAGE] for j in range(0, len(list), N_ITEMS_PER_PAGE)]
 
@@ -122,22 +122,87 @@ def list_2_pages(list):
 #returns all the subruns in output of the sort pass
 def pass0(input):
     output = []
-    for i in range(0, N_PAGES // N_ITEMS_PER_PAGE, BUFFER_FRAMES):
+    for i in range(0, N_PAGES, BUFFER_FRAMES):
         run = [x for page in input[i:min(i+BUFFER_FRAMES, len(input))] for x in page]
         run.sort()
         output.append(list_2_pages(run))
     return output
 
 
-#def set_finished_runs(inp, n, p, ):
+def merge_pass(inp, out_frame, out, run, n, p, act, cols, i, e, z):
+    show = []
+    if len(out_frame) == N_ITEMS_PER_PAGE:
+        if z == 0:
+            run.append([out_frame])
+            z += 1
+        else:
+            run[0].append(out_frame)
+        out_frame = []
+    temp = copy.deepcopy([out_frame, out, run, act, p, cols, n, z])
+    show.append(temp)
+    finished = []
+    for j in range(i, e):
+        if p[j] == len(inp[j]) + 1:
+            finished.append(j - i)
+            act[j - i] = [10000]
+            n[j - i] = 1
+            cols[j - i] = BLACK
+    if len(finished) == e - i:
+        show.append([out_frame, out, run, act, p, cols, n, z])
+        show.append(True)
+        return show
+    else:
+        try:
+            renew = n.index(0)
+            # if the actual page is the last of the run, this subrun has finished
+            if p[i + renew] == len(inp[i + renew]):
+                finished.append(renew)
+                p[i + renew] += 1
+                act[renew] = [10000]
+                n[renew] = 1
+                cols[renew] = BLACK
+                if len(finished) == e - i:
+                    show.append([out_frame, out, run, act, p, cols, n, z])
+                    show.append(True)
+                    return show
+            # otherwise load next page
+            else:
+                act[renew] = inp[i + renew][p[i + renew]]
+                p[i + renew] += 1
+                n[renew] = len(act[renew])
+            temp2 = copy.deepcopy([out_frame, out, run, act, p, cols, n, z])
+            show.append(temp2)
+        except ValueError:
+            pass
+        # find minimum value
+        listt = [x[0] for x in act]
+        minn = min(listt)
+        index_min = listt.index(minn)
+        act[index_min].remove(minn)
+        out_frame.append(minn)
+        n[index_min] -= 1
+        show.append([out_frame, out, run, act, p, cols, n, z])
+    show.append(False)
+    return show
 
 
 #ask the user for the size of the relation and the number of buffer frames
 print("Hi! This is an application for the visualization of the external multipass sorting algorithm.")
 print("I'm going to ask you for further details regarding the sizes. Note that in one page there is space for two items.")
-N_PAGES = int(input("Please tell me how many values the input file contains: "))
+N_VALUES = int(input("Please tell me how many values the input file contains: "))
+N_PAGES = N_VALUES // N_ITEMS_PER_PAGE
 BUFFER_FRAMES = int(input("Please tell me how many frames the buffer has: "))
 F = BUFFER_FRAMES - 1
+max_col = ((WIDTH // 2) - (CONTOUR_WIDTH // 2) - 100) // (RECT_WIDTH + 10)
+
+#chech dimensions
+if BUFFER_FRAMES < 3:
+    raise ValueError("Please insert 3 or more buffer frames")
+max_runs = N_PAGES // BUFFER_FRAMES
+if max_runs * ((RECT_HEIGHT + 3) * BUFFER_FRAMES + 50) > (HEIGHT * max_col):
+    raise ValueError(f"File too large! Please put a a number of values less than or equal to {(HEIGHT * max_col * BUFFER_FRAMES) // (BUFFER_FRAMES * (3 + RECT_HEIGHT) + 50) }")
+if N_PAGES <= BUFFER_FRAMES:
+    raise ValueError("No need to use multipass!!")
 
 #initialize the visualization with pygame
 pygame.init()
@@ -149,10 +214,8 @@ pygame.time.delay(10)
 win.fill(BLACK)
 
 #generate random numbers
-inp = [random.randint(0, 50) for _ in range(N_PAGES)]
+inp = [random.randint(0, 50) for _ in range(N_VALUES)]
 inp = list_2_pages(inp)
-
-#chech dimensions
 
 
 run = True
@@ -208,91 +271,50 @@ while run:
             inp = sorted_runs
         #MERGE PASS
         else:
-            inp_copy = inp.copy()
+            inp_copy = copy.deepcopy(inp)
             out = []
             p = [0] * len(inp)
             for i in range(0, len(inp), F):
                 e = min(len(inp), i + F)
                 run = []    #construct the actual run
                 act = [x[0] for x in inp[i:e]]  #what is inside the buffer
-                n = [N_ITEMS_PER_PAGE] * (e - i)   #how many values there are in each of the buffer frames
+                n = [len(act[x]) for x in range(len(act))]  #how many values there are in each of the buffer frames
                 out_frame = []
                 for k in range(e-i):
                     p[i+k] = 1
-                cols = colors[i:e] + [GREEN]
+                cols = []
+                for k in range(i, e):
+                    cols.append(colors[k % len(colors)])
+                cols.append(GREEN)
                 z = 0
                 while True:
-                    #if the frame is full, send it to the output
-                    if len(out_frame) == N_ITEMS_PER_PAGE:
-                        if z == 0:
-                            run.append([out_frame])
-                            z += 1
-                        else:
-                            run[0].append(out_frame)
-                        out_frame = []
 
-                    display_titles("INPUT", "BUFFER", f"OUTPUT - pass {pazz}")
-                    display_input(inp_copy, p)
-                    display_buffer(act + [out_frame], cols)
-                    display_output(out + run)
-                    pygame.display.update()
-                    pygame.time.delay(WAITING_TIME)
-
-                    #check how many subruns have finished
-                    finished = []
-                    for j in range(i, e):
-                        if p[j] == len(inp[j]) + 1:
-                            finished.append(j - i)
-                            act[j - i] = [10000]
-                            n[j - i] = 1
-                            cols[j-i] = BLACK
-                    #if everyone has finished, break the while
-                    if len(finished) == e - i:
-                        break
-                    #see if there are runs that need to load a new page
-                    try:
-                        renew = n.index(0)
-                        #if the actual page is the last of the run, this subrun has finished
-                        if p[i + renew] == len(inp[i + renew]):
-                            finished.append(renew)
-                            p[i+renew] += 1
-                            act[renew] = [10000]
-                            n[renew] = 1
-                            cols[renew] = BLACK
-                            if len(finished) == e - i:
-                                break
-                        #otherwise load next page
-                        else:
-                            act[renew] = inp[i + renew][p[i + renew]]
-                            p[i + renew] += 1
-                            n[renew] = len(act[renew])
-                        #display loading of new page
+                    merge = merge_pass(inp, out_frame, out, run, n, p, act, cols, i, e, z)
+                    to_break = merge[-1]
+                    if to_break:
+                        out_frame, out, run, act, p, cols, n, z = merge[0]
                         display_titles("INPUT", "BUFFER", f"OUTPUT - pass {pazz}")
                         display_input(inp_copy, p)
                         display_buffer(act + [out_frame], cols)
                         display_output(out + run)
                         pygame.display.update()
                         pygame.time.delay(WAITING_TIME)
-                    except ValueError:
-                        pass
-                    #find minimum value
-                    listt = [x[0] for x in act]
-                    minn = min(listt)
-                    index_min = listt.index(minn)
-                    act[index_min].remove(minn)
-                    out_frame.append(minn)
-                    n[index_min] -= 1
-
-                    #display step
-                    display_titles("INPUT", "BUFFER", f"OUTPUT - pass {pazz}")
-                    display_input(inp_copy, p)
-                    display_buffer(act + [out_frame], cols)
-                    display_output(out + run)
-                    pygame.display.update()
-                    pygame.time.delay(WAITING_TIME)
+                        if len(merge) == 3:
+                            out_frame, out, run, act, p, cols, n, z = merge[1]
+                        break
+                    else:
+                        for j in range(len(merge)-1):
+                            out_frame, out, run, act, p, cols, n, z = merge[j]
+                            display_titles("INPUT", "BUFFER", f"OUTPUT - pass {pazz}")
+                            display_input(inp_copy, p)
+                            display_buffer(act + [out_frame], cols)
+                            display_output(out + run)
+                            pygame.display.update()
+                            pygame.time.delay(WAITING_TIME)
 
                 out += run
             inp = out
+        # if this was the last run
         if len(inp) == 1:
             text = f"SORTED! It took {pazz + 1} passes"
             font = pygame.font.Font(None, 60)
@@ -302,7 +324,7 @@ while run:
             pygame.display.update()
             pygame.time.delay(8000)
             run = False
-        pygame.event.clear()
+        pygame.event.clear()    #reset pressed keys
         pazz += 1
 
 
