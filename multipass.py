@@ -3,7 +3,7 @@ import pygame
 import copy
 
 N_ITEMS_PER_PAGE = 2
-WAITING_TIME = 500
+WAITING_TIME = 2000
 
 WIDTH = 1200
 HEIGHT = 800
@@ -25,16 +25,19 @@ colors = [(255, 153, 153), (153, 153, 255), (255, 255, 153), (255, 153, 255), (1
 def display_titles(title_inp, title_buffer, title_out):
     font = pygame.font.Font(None, 50)
 
+    #input title
     text_surface = font.render(title_inp, True, (255, 255, 255))
     input_x = 60
     input_y = 60
     win.blit(text_surface, (input_x, input_y))
 
+    #buffer title
     text_surface = font.render(title_buffer, True, (255, 255, 255))
     buffer_x = WIDTH // 2 - text_surface.get_size()[0] // 2
     buffer_y = 60
     win.blit(text_surface, (buffer_x, buffer_y))
 
+    #output title
     text_surface = font.render(title_out, True, (255, 255, 255))
     output_x = (WIDTH // 2) + (CONTOUR_WIDTH // 2) + 100
     output_y = 60
@@ -42,15 +45,19 @@ def display_titles(title_inp, title_buffer, title_out):
 
 
 def display_run(run, pos, color, coord_x, coord_y):
+    #if run is empty, nothing to display
     if len(run) == 0:
         return
+    #iterate on the pages of the run
     for i in range(len(run)):
         if i >= pos:
             col = color
         else:
             col = GREY
+        #coordinates of the cell
         rect_x = coord_x
         rect_y = coord_y + (RECT_HEIGHT + 3) * i
+        #if there is no more space, go to the next column
         if rect_y >= HEIGHT - RECT_HEIGHT:
             coord_x = coord_x + RECT_WIDTH + 10
             coord_y = - (RECT_HEIGHT + 3) * i + 150
@@ -66,10 +73,12 @@ def display_run(run, pos, color, coord_x, coord_y):
 
 
 def display_input(runs, positions):
+    #position of the very first page
     coord_x = 60
     coord_y = 150
-    for k in range(len(runs)):
+    for k in range(len(runs)): #display all the runs
         coord_x, rect_y = display_run(runs[k], positions[k], colors[k%10], coord_x, coord_y)
+        # if there is no more space, go to the next column
         if rect_y + RECT_HEIGHT + 3 >= HEIGHT - RECT_HEIGHT:
             coord_y = 150
         else:
@@ -79,10 +88,12 @@ def display_input(runs, positions):
 def display_output(runs):
     if len(runs) == 0:
         return
+    #position of the very first page
     coord_x = (WIDTH // 2) + (CONTOUR_WIDTH // 2) + 100
     coord_y = 150
-    for k in range(len(runs)):
+    for k in range(len(runs)): #display all the runs
         coord_x, rect_y = display_run(runs[k], 0, GREEN, coord_x, coord_y)
+        # if there is no more space, go to the next column
         if rect_y + RECT_HEIGHT + 3 >= HEIGHT - RECT_HEIGHT:
             coord_y = 150
         else:
@@ -90,9 +101,10 @@ def display_output(runs):
 
 
 def display_buffer(contents, colors):
+    # position of the first buffer
     coord_x = (WIDTH // 2) - (CONTOUR_WIDTH // 2)
     coord_y = 150
-    for i in range(BUFFER_FRAMES):
+    for i in range(BUFFER_FRAMES):  #draw frames' conoturs
         rect_x = coord_x
         rect_y = coord_y + (CONTOUR_HEIGHT + 40) * i
         pygame.draw.rect(win, LIGHT_BLUE, (rect_x, rect_y, CONTOUR_WIDTH, CONTOUR_HEIGHT), 5)
@@ -107,7 +119,7 @@ def display_buffer(contents, colors):
         text_width, text_height = text_surface.get_size()
         win.blit(text_surface, (rect_x + (RECT_WIDTH - text_width) // 2, rect_y + (RECT_HEIGHT - text_height) // 2))
         j += 1
-    if j != BUFFER_FRAMES - 1:
+    if j != BUFFER_FRAMES - 1:  #useful in sort phase to turn  to black the eventually not used frames
         for k in range(j, BUFFER_FRAMES):
             rect_x = coord_x + (CONTOUR_WIDTH - RECT_WIDTH) // 2
             rect_y = coord_y + (CONTOUR_HEIGHT + 40) * k + (CONTOUR_HEIGHT - RECT_HEIGHT) // 2
@@ -130,7 +142,8 @@ def pass0(input):
 
 
 def merge_pass(inp, out_frame, out, run, n, p, act, cols, i, e, z):
-    show = []
+    show = []   #list containing the stages to show
+    #if out_frame is full, send it to output
     if len(out_frame) == N_ITEMS_PER_PAGE:
         if z == 0:
             run.append([out_frame])
@@ -139,21 +152,22 @@ def merge_pass(inp, out_frame, out, run, n, p, act, cols, i, e, z):
             run[0].append(out_frame)
         out_frame = []
     temp = copy.deepcopy([out_frame, out, run, act, p, cols, n, z])
-    show.append(temp)
-    finished = []
+    show.append(temp)   #initial state
+    finished = []   #list containing the finished runs
     for j in range(i, e):
-        if p[j] == len(inp[j]) + 1:
+        if p[j] == len(inp[j]) + 1: #add to finished all the finished runs, update the colour to black and put e very big value
             finished.append(j - i)
             act[j - i] = [10000]
             n[j - i] = 1
             cols[j - i] = BLACK
+    #if all the runs are finished, display final state and stop
     if len(finished) == e - i:
         show.append([out_frame, out, run, act, p, cols, n, z])
         show.append(True)
         return show
     else:
         try:
-            renew = n.index(0)
+            renew = n.index(0)  #position of empty frame
             # if the actual page is the last of the run, this subrun has finished
             if p[i + renew] == len(inp[i + renew]):
                 finished.append(renew)
@@ -161,7 +175,7 @@ def merge_pass(inp, out_frame, out, run, n, p, act, cols, i, e, z):
                 act[renew] = [10000]
                 n[renew] = 1
                 cols[renew] = BLACK
-                if len(finished) == e - i:
+                if len(finished) == e - i:  #check if it was the last run to finish
                     show.append([out_frame, out, run, act, p, cols, n, z])
                     show.append(True)
                     return show
@@ -172,7 +186,7 @@ def merge_pass(inp, out_frame, out, run, n, p, act, cols, i, e, z):
                 n[renew] = len(act[renew])
             temp2 = copy.deepcopy([out_frame, out, run, act, p, cols, n, z])
             show.append(temp2)
-        except ValueError:
+        except ValueError:  #no frame was empty
             pass
         # find minimum value
         listt = [x[0] for x in act]
@@ -198,6 +212,8 @@ max_col = ((WIDTH // 2) - (CONTOUR_WIDTH // 2) - 100) // (RECT_WIDTH + 10)
 #chech dimensions
 if BUFFER_FRAMES < 3:
     raise ValueError("Please insert 3 or more buffer frames")
+elif BUFFER_FRAMES > 7:
+    raise ValueError("Too many buffer frames!!")
 max_runs = N_PAGES // BUFFER_FRAMES
 if max_runs * ((RECT_HEIGHT + 3) * BUFFER_FRAMES + 50) > (HEIGHT * max_col):
     raise ValueError(f"File too large! Please put a a number of values less than or equal to {(HEIGHT * max_col * BUFFER_FRAMES) // (BUFFER_FRAMES * (3 + RECT_HEIGHT) + 50) }")
@@ -231,7 +247,7 @@ while run:
         if event.type == pygame.QUIT:
             run = False
 
-    #start execution
+    #start execution of the pass
     if keys[pygame.K_SPACE]:
         execute = True
 
@@ -245,7 +261,6 @@ while run:
         else:
             display_input(inp, [0]*len(inp))
         display_buffer([], [])
-
         pygame.display.update()
     else:
         # SORT PASS
@@ -272,27 +287,27 @@ while run:
         #MERGE PASS
         else:
             inp_copy = copy.deepcopy(inp)
-            out = []
-            p = [0] * len(inp)
+            out = []    #all the sorted run generated by this pass
+            p = [0] * len(inp)  #positions at which we have arrived in every sublist
             for i in range(0, len(inp), F):
                 e = min(len(inp), i + F)
                 run = []    #construct the actual run
-                act = [x[0] for x in inp[i:e]]  #what is inside the buffer
+                act = [x[0] for x in inp[i:e]]  #what is inside the input buffer frames
                 n = [len(act[x]) for x in range(len(act))]  #how many values there are in each of the buffer frames
-                out_frame = []
+                out_frame = []  #what is inside the output buffer frame
                 for k in range(e-i):
                     p[i+k] = 1
-                cols = []
-                for k in range(i, e):
+                cols = []   #colors inside the buffer frames
+                for k in range(i, e):   #input colors are chosen in a cyclic way
                     cols.append(colors[k % len(colors)])
-                cols.append(GREEN)
+                cols.append(GREEN)  #output frame is green
                 z = 0
                 while True:
 
                     merge = merge_pass(inp, out_frame, out, run, n, p, act, cols, i, e, z)
-                    to_break = merge[-1]
+                    to_break = merge[-1]    #is True if all the F runs have finished
                     if to_break:
-                        out_frame, out, run, act, p, cols, n, z = merge[0]
+                        out_frame, out, run, act, p, cols, n, z = merge[0]  #update data structures
                         display_titles("INPUT", "BUFFER", f"OUTPUT - pass {pazz}")
                         display_input(inp_copy, p)
                         display_buffer(act + [out_frame], cols)
@@ -304,19 +319,18 @@ while run:
                         break
                     else:
                         for j in range(len(merge)-1):
-                            out_frame, out, run, act, p, cols, n, z = merge[j]
+                            out_frame, out, run, act, p, cols, n, z = merge[j]  #update data structures
                             display_titles("INPUT", "BUFFER", f"OUTPUT - pass {pazz}")
                             display_input(inp_copy, p)
                             display_buffer(act + [out_frame], cols)
                             display_output(out + run)
                             pygame.display.update()
                             pygame.time.delay(WAITING_TIME)
-
                 out += run
             inp = out
-        # if this was the last run
+        # if the output is the whole file, you have finished
         if len(inp) == 1:
-            text = f"SORTED! It took {pazz + 1} passes"
+            text = f"SORTED! It took {pazz + 1} passes" #display number of passes needed
             font = pygame.font.Font(None, 60)
             text_surface = font.render(text, True, (255,0,0))
             text_width, text_height = text_surface.get_size()
@@ -325,8 +339,7 @@ while run:
             pygame.time.delay(8000)
             run = False
         pygame.event.clear()    #reset pressed keys
-        pazz += 1
-
+        pazz += 1   #next pass
 
     # exiting the main window
 pygame.quit()
